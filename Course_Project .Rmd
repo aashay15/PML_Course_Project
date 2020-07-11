@@ -1,0 +1,177 @@
+---
+title: "Course_Project"
+author: "Aashay Sharma"
+date: "11/07/2020"
+output: 
+  html_document:
+        keep_md : true
+---
+
+# Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har] (see the section on the Weight Lifting Exercise Dataset).
+
+
+## Loading the required libraries and DATA :
+
+```{r results = FALSE}
+library(ggplot2)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+```
+
+Loading the data 
+
+```{r}
+train_url <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+data_train <- read.csv(url(train_url))
+
+data_test <- read.csv(url(test_url))
+```
+
+## Exploratory Data Analysis and Data Cleansing 
+The data contains NA values which are not of use but first we can look at the dimensions of the raw data.
+
+```{r}
+dim(data_train)
+
+dim(data_test)
+```
+
+## Some Basic Exploratory Analysis:
+Below we can see we are working with 5 classes 
+```{r}
+table(data_train$classe)
+```
+
+Below we can see unique users and proportion of the contribution to readings by them
+
+```{r}
+prop.table(table(data_train$user_name))
+```
+
+To infer more about data we can plot a qplot
+```{r}
+qplot(x = classe, fill = user_name, data = data_train)
+```
+
+
+## Cleaning the data
+We need to check for the columns which contains most of its values as NA as these columns won't support our analysis
+
+We can do this procedure in multiple ways but the most statistical approach would be to remove the variables which have near to 0 variance, as these variables cannot help in analysis
+
+```{r}
+near_zero_var <- nearZeroVar(data_train)
+
+data_train_2 <- data_train[ , - near_zero_var]
+data_test_2 <- data_test[ , - near_zero_var]
+
+# now if we look at the dimensions :
+dim(data_train_2)
+
+dim(data_test_2)
+```
+
+Now removing the variables which contain more than 95 % NA values
+
+```{r}
+na_values <- sapply(data_train_2, function(x) mean(is.na(x))) > 0.95
+data_train_3 <- data_train_2[,na_values == FALSE]
+data_test_3 <- data_test_2[,na_values == FALSE]
+```
+
+Now we can look at the dimensions of the data :
+
+```{r}
+dim(data_train_3)
+
+dim(data_test_3)
+```
+
+Now if we look at the data closely we can see that first seven columns are not related to the data and we can remove it from the data final data frame.
+
+```{r}
+train_final <- data_train_3[, 8:59]
+test_final <- data_test_3[, 8:59]
+```
+
+Now we have cleaned the data and we can proceed with Machine learning analysis on the data.
+
+## Practical Machine Learning Analysis 
+
+#### The first step will be to separate the training set further into a train and validation set, we will keep 75 % data in training set and other in validation set
+
+```{r}
+set.seed(12345)
+inTrain <- createDataPartition(y = train_final$classe, p = 0.75, list = FALSE)
+training <- train_final[inTrain, ]
+testing <- train_final[-inTrain, ]
+```
+
+Its always good to check the dimensions
+```{r}
+dim(training)
+
+dim(testing)
+```
+
+### Performing different machine learning classifiers on the training data.
+
+This is clearly a classification problem as we need to predict the class (A, B, C, D, E) using the feature (or variables) and so the most commonly used classifying machine learning algorithms are Decision Trees and RandomForest and here we will try both the algorithms to check which algorithm performs better in terms of accuracy on the validation set and then we will choose the algorithm with best accuracy to predict from the testing set.
+
+We have already cleaned the data and while cleaning the data we have already removed the variables with near to 0 variance and hence we can directly start using the caret package to apply the machine learning algorithms.
+
+## 1. Decision Tree Model
+
+Training a Decision Tree classifier 
+```{r}
+DT_model <- train(classe ~ . , data = training, method = "rpart")
+```
+
+Predicting on the validation set and printing the confusion matrix
+```{r}
+DT_predict <-  predict(DT_model,testing)
+confusionMatrix(as.factor(testing$classe), DT_predict)
+```
+
+As we can see the Decision tree  model did not perform very well it has accuracy of only 48.5 %, Now we can perform a random forest model to check its accuracy.
+
+## 2. Random Forest Model 
+
+Training a Random Forest model on the training set 
+```{r}
+RF_model <-  train(classe ~ . , method = "rf", data =  training, ntree = 100)
+```
+
+Predicting on the validation set and printing the confusion matrix
+```{r}
+RF_predict <- predict(RF_model, testing)
+confusionMatrix(as.factor(testing$classe), RF_predict)
+```
+
+As we can se the Random Forest Model performs very well with 99.49 % accuracy and looking at its accuracy I will pick Random Forest as our final model and now I will predict on the final testing data using our RF_model.
+
+## Predicting on our final testing data using Random Forest (RF_model)
+
+```{r}
+final_prediction <- predict(RF_model, test_final)
+final_prediction
+```
+
+Above we get our predicted model on the final test set using the RF_model
+
+### Conclusion 
+#### Finally we can say that random forest (accuracy 99.49%) outperforms the decision tree algorithm (accuracy 48%) by looking at the accuracies and thus we chose random forest as our final model.
+
+#### We considered only these algorithms as this problem is a classification problem and this two algorithms are considered the most used models in classification problems. We can look random forest as an extension to decision tree and thus we can justify its accuracy. 
+
+#### Although Random Forest was Highly Accurate, it has some cons :
+#### 1. It took around 12-15 mins to train the model
+#### 2. It was a bit computer intensive and thus would take lot more time on lower end devices.
+
+#### A more statistical approach could be applied to the training set by finding out the variables which account to most of the variance and this would reduce the variables increasing the effciency of the model but it would possibly have other significant effects like it can bring down the accuracy a little bit and thus it is the matter of further deep analysis.
